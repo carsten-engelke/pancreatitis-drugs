@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medikationsplan QR-Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .scan-animation {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        .medication-row:hover {
+            background-color: #f3f4f6;
+            transform: translateY(-2px);
+            transition: all 0.2s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-blue-600 mb-2">
+                <i class="fas fa-prescription-bottle-alt mr-2"></i>Medikationsplan Scanner
+            </h1>
+            <p class="text-gray-600">Scannen Sie QR-Codes von Medikationsplänen und verwalten Sie Ihre Medikation</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Scanner Section -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-qrcode mr-2 text-blue-500"></i>QR-Code Scanner
+                </h2>
+                
+                <div class="mb-4 relative">
+                    <div class="border-2 border-blue-400 rounded-lg overflow-hidden scan-animation">
+                        <video id="scanner" class="w-full h-auto" playsinline></video>
+                    </div>
+                    <div class="absolute inset-0 flex items-center justify-center hidden" id="scanning-overlay">
+                        <div class="bg-blue-500 text-white px-4 py-2 rounded-full">
+                            <i class="fas fa-search mr-2"></i>Scannt...
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col space-y-4">
+                    <button id="start-btn" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-play mr-2"></i>Scanner starten
+                    </button>
+                    <button id="stop-btn" class="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg flex items-center justify-center hidden">
+                        <i class="fas fa-stop mr-2"></i>Scanner stoppen
+                    </button>
+                    <button id="add-manually-btn" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-plus mr-2"></i>Manuell hinzufügen
+                    </button>
+                </div>
+                
+                <div class="mt-4 p-4 bg-blue-50 rounded-lg hidden" id="scan-result">
+                    <h3 class="font-medium text-blue-800 mb-2">Letzter Scan:</h3>
+                    <pre id="scan-data" class="text-sm bg-white p-2 rounded overflow-auto max-h-40"></pre>
+                </div>
+            </div>
+
+            <!-- Medication Table -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800 flex items-center">
+                        <i class="fas fa-list-alt mr-2 text-blue-500"></i>Medikationsplan
+                    </h2>
+                    <span id="medication-count" class="bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded-full">0 Einträge</span>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-500">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3">Medikament</th>
+                                <th class="px-4 py-3">Dosierung</th>
+                                <th class="px-4 py-3">Einnahme</th>
+                                <th class="px-4 py-3">Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="medication-table-body">
+                            <!-- Placeholder when empty -->
+                            <tr id="empty-placeholder">
+                                <td colspan="4" class="px-4 py-8 text-center text-gray-400">
+                                    <i class="fas fa-tablets text-4xl mb-2 block"></i>
+                                    <p>Noch keine Medikamente gescannt</p>
+                                    <p class="text-sm mt-1">Scannen Sie einen QR-Code oder fügen Sie manuell hinzu</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="mt-4 flex justify-end">
+                    <button id="export-btn" class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg flex items-center">
+                        <i class="fas fa-file-export mr-2"></i>Exportieren
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Medication Modal -->
+    <div id="add-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div class="flex justify-between items-center border-b px-6 py-4">
+                <h3 class="text-lg font-semibold text-gray-800">Medikation hinzufügen</h3>
+                <button id="close-modal" class="text-gray-400 hover:text-gray-500">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <form id="medication-form" class="space-y-4">
+                    <div>
+                        <label for="med-name" class="block text-sm font-medium text-gray-700 mb-1">Medikamentenname</label>
+                        <input type="text" id="med-name" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div>
+                        <label for="med-dosage" class="block text-sm font-medium text-gray-700 mb-1">Dosierung</label>
+                        <input type="text" id="med-dosage" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div>
+                        <label for="med-schedule" class="block text-sm font-medium text-gray-700 mb-1">Einnahmeplan</label>
+                        <select id="med-schedule" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="1x täglich">1x täglich</option>
+                            <option value="2x täglich">2x täglich</option>
+                            <option value="3x täglich">3x täglich</option>
+                            <option value="nach Bedarf">nach Bedarf</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="bg-gray-50 px-6 py-3 flex justify-end space-x-3 rounded-b-lg">
+                <button id="cancel-add" class="px-4 py-2 text-gray-700 hover:text-gray-900">Abbrechen</button>
+                <button id="save-medication" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const scannerVideo = document.getElementById('scanner');
+        const scanResult = document.getElementById('scan-result');
+        const scanData = document.getElementById('scan-data');
+        const scanningOverlay = document.getElementById('scanning-overlay');
+        const addManuallyBtn = document.getElementById('add-manually-btn');
+        const addModal = document.getElementById('add-modal');
+        const closeModal = document.getElementById('close-modal');
+        const cancelAdd = document.getElementById('cancel-add');
+        const saveMedication = document.getElementById('save-medication');
+        const medicationForm = document.getElementById('medication-form');
+        const medicationTableBody = document.getElementById('medication-table-body');
+        const emptyPlaceholder = document.getElementById('empty-placeholder');
+        const exportBtn = document.getElementById('export-btn');
+        const medicationCount = document.getElementById('medication-count');
+
+        // Variables
+        let stream = null;
+        let medications = JSON.parse(localStorage.getItem('medications')) || [];
+        let scanningInterval = null;
+
+        // Initialize
+        updateMedicationTable();
+        updateMedicationCount();
+
+        // Event Listeners
+        startBtn.addEventListener('click', startScanner);
+        stopBtn.addEventListener('click', stopScanner);
+        addManuallyBtn.addEventListener('click', () => addModal.classList.remove('hidden'));
+        closeModal.addEventListener('click', () => addModal.classList.add('hidden'));
+        cancelAdd.addEventListener('click', () => addModal.classList.add('hidden'));
+        saveMedication.addEventListener('click', addMedicationManually);
+        exportBtn.addEventListener('click', exportMedications);
+
+        // Functions
+        async function startScanner() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                scannerVideo.srcObject = stream;
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
+                scanningOverlay.classList.remove('hidden');
+                
+                // Start scanning for QR codes
+                scanningInterval = setInterval(scanQRCode, 500);
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                alert('Kamera-Zugriff fehlgeschlagen. Bitte Berechtigungen überprüfen.');
+            }
+        }
+
+        function stopScanner() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                scannerVideo.srcObject = null;
+                stream = null;
+            }
+            if (scanningInterval) {
+                clearInterval(scanningInterval);
+                scanningInterval = null;
+            }
+            startBtn.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+            scanningOverlay.classList.add('hidden');
+        }
+
+        function scanQRCode() {
+            if (!stream) return;
+
+            const canvas = document.createElement('canvas');
+            const video = scannerVideo;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            
+            if (code) {
+                handleScanResult(code.data);
+            }
+        }
+
+        function handleScanResult(data) {
+            try {
+                // Try to parse as JSON (standard Medikationsplan format)
+                const parsedData = JSON.parse(data);
+                scanData.textContent = JSON.stringify(parsedData, null, 2);
+                
+                // Add to medications
+                if (parsedData.medications) {
+                    medications = [...medications, ...parsedData.medications];
+                } else {
+                    medications.push(parsedData);
+                }
+                
+                // Save and update UI
+                localStorage.setItem('medications', JSON.stringify(medications));
+                updateMedicationTable();
+                updateMedicationCount();
+                
+                // Show result briefly
+                scanResult.classList.remove('hidden');
+                setTimeout(() => {
+                    scanResult.classList.add('hidden');
+                }, 5000);
+                
+            } catch (e) {
+                // If not JSON, just display the raw data
+                scanData.textContent = data;
+                scanResult.classList.remove('hidden');
+            }
+        }
+
+        function addMedicationManually() {
+            const name = document.getElementById('med-name').value;
+            const dosage = document.getElementById('med-dosage').value;
+            const schedule = document.getElementById('med-schedule').value;
+            
+            if (!name || !dosage) {
+                alert('Bitte füllen Sie alle erforderlichen Felder aus.');
+                return;
+            }
+            
+            const newMedication = {
+                name,
+                dosage,
+                schedule,
+                addedManually: true,
+                timestamp: new Date().toISOString()
+            };
+            
+            medications.push(newMedication);
+            localStorage.setItem('medications', JSON.stringify(medications));
+            
+            // Reset form and close modal
+            medicationForm.reset();
+            addModal.classList.add('hidden');
+            
+            // Update UI
+            updateMedicationTable();
+            updateMedicationCount();
+        }
+
+        function updateMedicationTable() {
+            if (medications.length === 0) {
+                emptyPlaceholder.classList.remove('hidden');
+                medicationTableBody.innerHTML = '';
+                medicationTableBody.appendChild(emptyPlaceholder);
+                return;
+            }
+            
+            emptyPlaceholder.classList.add('hidden');
+            medicationTableBody.innerHTML = '';
+            
+            medications.forEach((med, index) => {
+                const row = document.createElement('tr');
+                row.className = 'medication-row bg-white border-b hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="px-4 py-3 font-medium text-gray-900">${med.name}</td>
+                    <td class="px-4 py-3">${med.dosage}</td>
+                    <td class="px-4 py-3">
+                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                            ${med.schedule || 'nicht angegeben'}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 flex space-x-2">
+                        <button class="edit-btn p-1 text-blue-600 hover:text-blue-800" data-index="${index}">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="delete-btn p-1 text-red-600 hover:text-red-800" data-index="${index}">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </td>
+                `;
+                
+                medicationTableBody.appendChild(row);
+            });
+            
+            // Add event listeners to new buttons
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => editMedication(e.target.closest('button').dataset.index));
+            });
+            
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => deleteMedication(e.target.closest('button').dataset.index));
+            });
+        }
+
+        function editMedication(index) {
+            const med = medications[index];
+            
+            // Fill the modal with current values
+            document.getElementById('med-name').value = med.name;
+            document.getElementById('med-dosage').value = med.dosage;
+            document.getElementById('med-schedule').value = med.schedule || '1x täglich';
+            
+            // Show the modal
+            addModal.classList.remove('hidden');
+            
+            // Change save button behavior
+            saveMedication.onclick = function() {
+                const name = document.getElementById('med-name').value;
+                const dosage = document.getElementById('med-dosage').value;
+                const schedule = document.getElementById('med-schedule').value;
+                
+                if (!name || !dosage) {
+                    alert('Bitte füllen Sie alle erforderlichen Felder aus.');
+                    return;
+                }
+                
+                // Update medication
+                medications[index] = {
+                    ...medications[index],
+                    name,
+                    dosage,
+                    schedule,
+                    addedManually: true,
+                    timestamp: new Date().toISOString()
+                };
+                
+                localStorage.setItem('medications', JSON.stringify(medications));
+                
+                // Reset form and close modal
+                medicationForm.reset();
+                addModal.classList.add('hidden');
+                
+                // Update UI
+                updateMedicationTable();
+            };
+        }
+
+        function deleteMedication(index) {
+            if (confirm('Möchten Sie dieses Medikament wirklich entfernen?')) {
+                medications.splice(index, 1);
+                localStorage.setItem('medications', JSON.stringify(medications));
+                updateMedicationTable();
+                updateMedicationCount();
+            }
+        }
+
+        function updateMedicationCount() {
+            medicationCount.textContent = `${medications.length} ${medications.length === 1 ? 'Eintrag' : 'Einträge'}`;
+        }
+
+        function exportMedications() {
+            if (medications.length === 0) {
+                alert('Keine Medikamente zum Exportieren vorhanden.');
+                return;
+            }
+            
+            const dataStr = JSON.stringify(medications, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            
+            const exportFileDefaultName = `medikationsplan_${new Date().toISOString().slice(0,10)}.json`;
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+        }
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', stopScanner);
+    </script>
+</body>
+</html>
