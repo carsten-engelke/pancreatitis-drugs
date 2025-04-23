@@ -21,6 +21,20 @@
             transform: translateY(-2px);
             transition: all 0.2s ease;
         }
+        #scanner-container {
+            position: relative;
+        }
+        #scan-region {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60%;
+            height: 60%;
+            border: 3px dashed rgba(59, 130, 246, 0.7);
+            z-index: 10;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -40,10 +54,11 @@
                     <i class="fas fa-qrcode mr-2 text-blue-500"></i>QR-Code Scanner
                 </h2>
                 
-                <div class="mb-4 relative">
-                    <div class="border-2 border-blue-400 rounded-lg overflow-hidden scan-animation">
+                <div class="mb-4 relative" id="scanner-container">
+                    <div class="border-2 border-blue-400 rounded-lg overflow-hidden">
                         <video id="scanner" class="w-full h-auto" playsinline></video>
                     </div>
+                    <div id="scan-region"></div>
                     <div class="absolute inset-0 flex items-center justify-center hidden" id="scanning-overlay">
                         <div class="bg-blue-500 text-white px-4 py-2 rounded-full">
                             <i class="fas fa-search mr-2"></i>Scannt...
@@ -170,6 +185,8 @@
         let stream = null;
         let medications = JSON.parse(localStorage.getItem('medications')) || [];
         let scanningInterval = null;
+        let canvas = document.createElement('canvas');
+        let context = canvas.getContext('2d');
 
         // Initialize
         updateMedicationTable();
@@ -195,6 +212,7 @@
                     } 
                 });
                 scannerVideo.srcObject = stream;
+                scannerVideo.play();
                 startBtn.classList.add('hidden');
                 stopBtn.classList.remove('hidden');
                 scanningOverlay.classList.remove('hidden');
@@ -223,14 +241,11 @@
         }
 
         function scanQRCode() {
-            if (!stream) return;
+            if (!stream || scannerVideo.readyState !== HTMLMediaElement.HAVE_ENOUGH_DATA) return;
 
-            const canvas = document.createElement('canvas');
-            const video = scannerVideo;
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const context = canvas.getContext('2d');
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.width = scannerVideo.videoWidth;
+            canvas.height = scannerVideo.videoHeight;
+            context.drawImage(scannerVideo, 0, 0, canvas.width, canvas.height);
             
             const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
             const code = jsQR(imageData.data, imageData.width, imageData.height);
